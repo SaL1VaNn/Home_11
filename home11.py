@@ -2,96 +2,201 @@ from datetime import date
 
 
 class Field:
-    def __init__(self, value=None):
-        self.__value = value
-
-    def __str__(self):
-        return str(self.__value)
-
-    def __repr__(self):
-        return self.__str__()
-
-    def __eq__(self, other):
-        return self.__value == other
+    def __init__(self, value):
+        self._value = value
 
     @property
     def value(self):
-        return self.__value
+        return self._value
 
     @value.setter
     def value(self, new_value):
         self.validate(new_value)
-        self.__value = new_value
+        self._value = new_value
 
     def validate(self, value):
         pass
 
 
+class Name(Field):
+    pass
+
+
 class Phone(Field):
     def validate(self, value):
-        if value is not None and not isinstance(value, str):
-            raise ValueError("Phone number must be a string")
-
-        if value is not None and not value.isdigit():
-            print("Warning: Invalid phone number. Only digits are allowed.")
-            self.value = None
+        if not value.isdigit():
+            raise ValueError("Phone number should only contain digits.")
 
 
 class Birthday(Field):
     def validate(self, value):
-        if value is not None and not isinstance(value, date):
-            raise ValueError("Birthday must be a date object")
+        try:
+            day, month = map(int, value.split('.'))
+            date(year=2000, month=month, day=day)
+        except ValueError:
+            raise ValueError("Invalid birthday format. Please use dd.mm format.")
 
-        if value is not None and value > date.today():
-            raise ValueError("Birthday cannot be in the future")
+        if month < 1 or month > 12:
+            raise ValueError("Invalid month value.")
+        if day < 1 or day > 31:
+            raise ValueError("Invalid day value.")
 
 
 class Record:
-    def __init__(self, name, phone=None, birthday=None):
-        self.name = name
-        self.phone = Phone(phone)
-        self.birthday = Birthday(birthday)
+    def __init__(self, name, birthday=None):
+        self.name = Name(name)
+        self.phone = []
+        self.birthday = Birthday(birthday) if birthday else None
+
+    def add_phone(self, phone):
+        self.phone.append(Phone(phone))
+
+    def remove_phone(self, phone):
+        self.phone = [p for p in self.phone if p.value != phone]
+
+    def edit_phone(self, old_phone, new_phone):
+        for phone in self.phone:
+            if phone.value == old_phone:
+                phone.value = new_phone
+                break
 
     def days_to_birthday(self):
-        if self.birthday.value is None:
-            return None
-
-        today = date.today()
-        next_birthday = date(
-            today.year, self.birthday.value.month, self.birthday.value.day
-        )
-
-        if today > next_birthday:
-            next_birthday = date(
-                today.year + 1, self.birthday.value.month, self.birthday.value.day
-            )
-
-        days_left = next_birthday - today
-        return days_left.days
+        if self.birthday:
+            today = date.today()
+            current_year_birthday = self.birthday.value.replace(year=today.year)
+            if current_year_birthday < today:
+                next_birthday = current_year_birthday.replace(year=today.year + 1)
+            else:
+                next_birthday = current_year_birthday
+            days = (next_birthday - today).days
+            return days
 
 
 class AddressBook:
     def __init__(self):
-        self.records = []
+        self.data = {}
 
     def add_record(self, record):
-        self.records.append(record)
+        self.data[record.name.value] = record
 
-    def remove_record(self, record):
-        self.records.remove(record)
+    def __iter__(self):
+        return iter(self.data.values())
 
-    def iterator(self, page_size=10):
-        total_records = len(self.records)
-        num_pages = (total_records + page_size - 1) // page_size
 
-        for page in range(num_pages):
-            start_index = page * page_size
-            end_index = min((page + 1) * page_size, total_records)
-            yield self.records[start_index:end_index]
+def input_error(func):
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except KeyError:
+            return "Contact not found."
+        except ValueError as e:
+            return str(e)
+        except IndexError:
+            return "Invalid command."
+
+    return wrapper
+
+
+def handle_hello():
+    return "How can I help you?"
+
+
+@input_error
+def handle_add(name, phone, address_book, birthday=None):
+    if name in address_book:
+        return "Contact added successfully."
+    record = Record(name, birthday)
+    record.add_phone(phone)
+    address_book.add_record(record)
+    return "Contact added"
+
+
+@input_error
+def handle_change(name, phone, address_book):
+    if name not in address_book:
+        return "Contact not found."
+    record = address_book[name]
+    record.add_phone(phone)
+    return "Phone number changed successfully."
+
+
+@input_error
+def handle_phone(name, address_book):
+    if name not in address_book:
+        return "Contact not found."
+    record = address_book[name]
+    phones = [phone.value for phone in record.phone]
+    return ", ".join(phones)
+
+
+@input_error
+def handle_days_to_birthday(name, address_book):
+    if name not in address_book:
+        return "Contact not found."
+    record = address_book[name]
+    days = record.days_to_birthday()
+    if days is None:
+        return "No birthday date provided."
+    return f"Days until {name}'s birthday: {days}"
+
+
+def handle_show_all(address_book, page=1, page_size=5):
+    if not address_book:
+        return "No contacts found."
+
+    total_pages = (len(address_book) + page_size - 1) // page_size
+    if page < 1 or page > total_pages:
+        return "Invalid page number."
+
+    start_index = (page - 1) * page_size
+    end_index = start_index + page_size
+
+    output = ""
+    contacts = list(address_book)[start_index:end_index]
+    for record in contacts:
+        phones = [phone.value for phone in record.phone]
+        output += f"{record.name.value}: {', '.join(phones)}\n"
+
+    output += f"Page {page}/{total_pages}"
+    return output.strip()
+
+
+def main():
+    address_book = AddressBook()
+    while True:
+        command = input("Enter a command: ").lower()
+        if command == "hello":
+            response = handle_hello()
+        elif command.startswith("add"):
+            params = command.split()
+            if len(params) == 3:
+                _, name, phone = params
+                response = handle_add(name, phone, address_book)
+            elif len(params) == 4:
+                _, name, phone, birthday = params
+                response = handle_add(name, phone, address_book, birthday)
+            else:
+                response = "Invalid command."
+        elif command.startswith("change"):
+            _, name, phone = command.split()
+            response = handle_change(name, phone, address_book)
+        elif command.startswith("phone"):
+            _, name = command.split()
+            response = handle_phone(name, address_book)
+        elif command.startswith("days to birthday"):
+            _, name = command.split()
+            response = handle_days_to_birthday(name, address_book)
+        elif command.startswith("show all"):
+            params = command.split()
+            page = int(params[2]) if len(params) > 2 else 1
+            response = handle_show_all(address_book, page)
+        elif command in ["good bye", "close", "exit"]:
+            response = "Good bye!"
+            break
+        else:
+            response = "Invalid command."
+        print(response)
 
 
 if __name__ == "__main__":
-    phone = Phone("s")
-    print(
-        phone.value
-    )  # Виводиться None, а також виводиться попередження про неправильний номер телефону
+    main()
