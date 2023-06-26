@@ -1,4 +1,4 @@
-from datetime import datetime, date
+from datetime import date
 
 
 class Field:
@@ -33,7 +33,8 @@ class Phone(Field):
             raise ValueError("Phone number must be a string")
 
         if value is not None and not value.isdigit():
-            raise ValueError("Phone number must contain only digits")
+            print("Warning: Invalid phone number. Only digits are allowed.")
+            self.value = None
 
 
 class Birthday(Field):
@@ -87,3 +88,10 @@ class AddressBook:
             start_index = page * page_size
             end_index = min((page + 1) * page_size, total_records)
             yield self.records[start_index:end_index]
+
+
+if __name__ == "__main__":
+    phone = Phone("s")
+    print(
+        phone.value
+    )  # Виводиться None, а також виводиться попередження про неправильний номер телефону
